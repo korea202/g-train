@@ -1,19 +1,13 @@
 import os
 import sys
 
-from icecream import ic
 import fire
-from dotenv import load_dotenv
 import wandb
+from icecream import ic
+from dotenv import load_dotenv, dotenv_values
 
-sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+if (python_path := dotenv_values().get('PYTHONPATH')) and python_path not in sys.path: sys.path.append(python_path)
 
-from src.dataset.seoul_house_price import load_data 
-
-
-load_dotenv()
 
 #1. 데이터 읽기
 df = load_data()
