@@ -14,13 +14,13 @@ class HousePricePredictor:
     def __init__(self, input_dim=None, num_classes=None, hidden_dim=None, train_dataset=None, val_dataset=None, test_dataset=None):
         
         self. model = lgbm.LGBMRegressor(
-                boosting_type='dart',
+                boosting_type='gbdt',
                 colsample_bytree=0.8219308825575806,
                 learning_rate=0.23722302135412585, 
                 max_bin=255,
                 min_child_samples=47, 
                 #n_estimators=11719,
-                n_estimators=1000, 
+                n_estimators=4000, 
                 n_jobs=-1,
                 num_leaves=23, 
                 reg_alpha=1.650103578274446,

@@ -1,67 +1,90 @@
 import os
 import sys
-
-import fire
-import wandb
-from icecream import ic
 from dotenv import load_dotenv, dotenv_values
 
+# 환경변수 읽기
 if (python_path := dotenv_values().get('PYTHONPATH')) and python_path not in sys.path: sys.path.append(python_path)
 
 
-#1. 데이터 읽기
-df = load_data()
+#필수 라이브러리 정리
+import fire
+from icecream import ic
+import wandb
 
-#2. 컬럼 셋팅
-df = set_columns(df)
+import numpy as np
+import pandas as pd
 
-#3. 데이터 셋팅
-test_input = None
-
-# 제출파일 만들때
-if(TRAIN_MODE == False): 
-    test_input = load_test()
-
-#train_input, val_input, train_target, val_target, test_input = set_data(df, 0.2, test_input)
-train_input, val_input, train_target, val_target, test_input = set_data(df, 0.1, test_input)
-
-#4. 모델 학습
-#model = load_model() if TRAIN_MODE == False else train_lgbm_kfold(train_input, train_target, 5)
-#model = load_model() if TRAIN_MODE == False else train_lgbm(train_input, val_input, train_target, val_target)
-#model = load_model() if TRAIN_MODE == False else train_flaml(train_input, train_target)
-model = load_model()
-
-#5. 테스트/etc
-print_ex("트레이닝 점수=", model.score(train_input, train_target))
-print_ex("검증 점수=", model.score(val_input, val_target))
-
-# feature_importances_
-if SHOW_FEATURE_IMPORTANCE == True: show_feature_importance(model, df)
-
-if SHOW_PERMUTATION == True: show_permutation(model, )
+from src.utils.constant import Models
+from src.dataset.house_pricing import get_datasets
+from src.inference.inference import (load_checkpoint, init_model, inference)
 
 
-if(TRAIN_MODE == False):
-    
-    y_pred= model.predict(test_input)
-    print(y_pred.shape)
-    # 예측 결과 일부 확인
-    print(f"예측 값: {y_pred[:10]}")
-    df_result = pd.DataFrame({'target': np.array(y_pred).astype(int)})
-    df_result.to_csv(SAVE_DIR, index=False)
-else:
+def run_train(model_name, batch_size=1, num_epochs=1):
+    # 모델명 체크
+    Models.validation(model_name)
 
-    # 검증 데이터 예측 및 RMSE 출력
-    y_pred = model.predict(val_input)
-    rmse = np.sqrt(np.mean((val_target - y_pred) ** 2))
-    print_ex(f"RMSE: {rmse:.4f}")
+    # 데이터 불러오기
+    train_dataset, val_dataset, test_dataset = get_datasets()
 
-    # 예측 결과 일부 확인
-    print(f"예측 값: {y_pred[:10]}")
-    print(f"실제 값: {val_target[:10]}")
+    # 딥러닝용
+    model_params = {
+        "input_dim": train_dataset.features_dim,
+        "num_classes": None,
+        "hidden_dim": 64,
+    }
 
-    if SHOW_HITMAP == True: show_hitmap(df)
-    if SHOW_SCATTER == True: show_scatter(val_target, y_pred)
+    # 모델 생성 HousePricePredictor
+    model_class = Models[model_name.upper()].value  # Models -> HOUSE_PRICE_PREDICTOR = HousePricePredictor
+    model = model_class(**model_params, train_dataset=train_dataset, val_dataset=val_dataset, test_dataset=test_dataset)
 
+    train_loss = model.train_lgbm()
+    val_loss, _ = model.evaluate()
+    test_loss, predictions = model.test()
 
-send_kakao_message("작업이 완료되었습니다.\n" + work_msg)    
+    print("train_loss=", train_loss)
+    print("val_loss=", val_loss)
+    print("test_loss=", test_loss)
+
+    model.save_model(model_params, num_epochs, train_loss, train_dataset.scaler, train_dataset.label_encoders) 
+
+def run_inference(data=None, batch_size=64):
+
+    checkpoint = load_checkpoint()
+    model, scaler, label_encoders = init_model(checkpoint)
+
+    if data is None:
+        data = [
+            [3.00000000e+01, 1.00000000e+00, 9.38000000e+02, 1.14840000e+02,
+            9.00000000e+00, 1.50000000e+01, 2.00000000e+03, 1.80400000e+03,
+            1.35000000e+02, 1.00000000e+00, 9.76000000e+02, 3.27000000e+02,
+            2.40000000e+02, 0.00000000e+00, 1.14000000e+03, 1.26900834e+02,
+            3.75296467e+01, 1.37000000e+05, 1.90000000e+01, 5.30000000e+01,
+            2.02300000e+03, 4.00000000e+00, 1.00000000e+00, 1.00000000e+00,
+            1.00000000e+00],
+            [1.31700000e+03, 0.00000000e+00, 4.28800000e+03, 8.48600000e+01,
+            2.70000000e+01, 1.10000000e+01, 2.01100000e+03, 5.11700000e+03,
+            1.18400000e+03, 0.00000000e+00, 3.45221705e+02, 7.80000000e+01,
+            7.49002584e+01, 0.00000000e+00, 3.37051163e+02, 1.26829869e+02,
+            3.75107697e+01, 3.57000000e+04, 1.80000000e+01, 1.85000000e+02,
+            2.01200000e+03, 4.00000000e+00, 0.00000000e+00, 1.00000000e+00,
+            0.00000000e+00],
+            [5.40000000e+01, 7.00000000e+00, 3.47500000e+03, 5.73300000e+01,
+            1.30000000e+01, 3.00000000e+00, 1.99700000e+03, 6.71400000e+03,
+            1.18400000e+03, 0.00000000e+00, 6.78993095e+02, 7.80000000e+01,
+            5.68888889e+01, 2.77557996e+03, 7.74420590e+02, 1.27013688e+02,
+            3.75157083e+01, 5.00000000e+04, 1.40000000e+01, 2.56000000e+02,
+            2.01100000e+03, 6.00000000e+00, 1.00000000e+00, 1.00000000e+00,
+            1.00000000e+00]
+        ]
+
+    data = np.array(data)
+
+    price = inference(model, scaler, label_encoders, data, batch_size)
+    print(price)
+
+if __name__ == '__main__':  # python main.py
+
+    fire.Fire({
+        "train": run_train,  # python main.py train --model_name house_price_predictor
+        "inference": run_inference, # python inference/inference.py
+    })
