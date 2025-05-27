@@ -86,5 +86,5 @@ if __name__ == '__main__':  # python main.py
 
     fire.Fire({
         "train": run_train,  # python main.py train --model_name house_price_predictor
-        "inference": run_inference, # python inference/inference.py
+        "inference": run_inference, # python main.py inference
     })
